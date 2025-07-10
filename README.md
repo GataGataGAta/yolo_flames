@@ -1,70 +1,70 @@
 ```markdown
-# YOLOv8 Click Annotation Tool
+# YOLOv8 クリックアノテーションツール
 
-This tool allows you to annotate objects in video frames using YOLOv8 object detection.  It provides a simple GUI for navigating frames, selecting object classes, and saving annotations in YOLO format.
+このツールは、YOLOv8オブジェクト検出を利用して、動画のフレーム内のオブジェクトにアノテーションを付けるためのものです。 フレームの移動、オブジェクトクラスの選択、YOLO形式でのアノテーションの保存を行うための簡単なGUIを提供します。
 
-## Prerequisites
+## 必要なもの
 
-*   Python 3.6 or higher
-*   Required Python packages:
+*   Python 3.6以上
+*   必要なPythonパッケージ：
     *   opencv-python
     *   imageio
     *   ultralytics
     *   Pillow
-    *   tkinter (usually comes with Python, but may require separate installation on some systems)
+    *   tkinter (通常はPythonに付属していますが、システムによっては別途インストールが必要な場合があります)
     *   tqdm
 
-You can install these packages using pip:
+これらのパッケージは、pipを使用してインストールできます。
 
 ```bash
 pip install opencv-python imageio ultralytics Pillow tqdm
 ```
 
-## Installation
+## インストール
 
-1.  Download the script `yolo_frame_click_tool.py`.
+1.  スクリプト `yolo_click.py` をダウンロードします。
 
-## Usage
+## 使い方
 
-1.  **Run the script:**
+1.  **スクリプトを実行します：**
 
     ```bash
     python yolo_frame_click_tool.py path/to/your/video.mp4
     ```
 
-    Replace `path/to/your/video.mp4` with the actual path to your video file.
+    `path/to/your/video.mp4` を、実際の動画ファイルのパスに置き換えてください。
 
-2.  **Frame Extraction:**
+2.  **フレームの抽出：**
 
-    *   If frame images do not exist in `<video_name>_frames` directory, the tool will ask you to select a frame rate (60fps or 30fps). Select a frame rate by entering `1` or `2`.
-    *   The tool will extract frames from the video and save them to the `<video_name>_frames` directory.
-    *   If the frame images already exist in the directory, the tool will skip frame extraction and proceed to annotation.
+    *   `<video_name>_frames` ディレクトリにフレーム画像が存在しない場合、ツールはフレームレート（60fpsまたは30fps）を選択するように求めます。 `1` または `2` を入力してフレームレートを選択してください。
+    *   ツールは動画からフレームを抽出し、`<video_name>_frames` ディレクトリに保存します。
+    *   ディレクトリにフレーム画像が既に存在する場合、ツールはフレーム抽出をスキップしてアノテーションに進みます。
 
-3.  **Annotation Process:**
+3.  **アノテーションのプロセス：**
 
-    *   The GUI window will appear, displaying the first frame with YOLOv8 object detection results.
-    *   A class ID selection panel is on the left side. Use the Combobox to select the class ID for the object you want to annotate.
-    *   Click on the object in the image to annotate it. The tool will:
-        *   Save the image to the `output_dataset/images/train` or `output_dataset/images/val` directory.
-        *   Create a corresponding YOLO format label file in the `output_dataset/labels/train` or `output_dataset/labels/val` directory.
-        *   Save a copy of the clicked image with a red bounding box to `output_clicked` directory.
-        *   Automatically advance to the next frame.
-    *   Use the following keys to navigate and control the annotation process:
-        *   `f`: Next frame
-        *   `d`: Previous frame
-        *   `s`: Save label for the clicked object
-        *   `q`: Save progress and quit
-        *   `Ctrl+w`: Reset progress (deletes `progress.json`) and quit
+    *   GUIウィンドウが表示され、最初のフレームがYOLOv8オブジェクト検出の結果とともに表示されます。
+    *   クラスIDの選択パネルが左側にあります。 コンボボックスを使用して、アノテーションを付けるオブジェクトのクラスIDを選択します。
+    *   画像内のオブジェクトをクリックしてアノテーションを付けます。 ツールは次の処理を行います。
+        *   画像を `output_dataset/images/train` または `output_dataset/images/val` ディレクトリに保存します。
+        *   対応するYOLO形式のラベルファイルを `output_dataset/labels/train` または `output_dataset/labels/val` ディレクトリに作成します。
+        *   クリックした画像のコピーを、赤いバウンディングボックス付きで `output_clicked` ディレクトリに保存します。
+        *   自動的に次のフレームに進みます。
+    *   次のキーを使用して、アノテーションプロセスをナビゲートおよび制御します。
+        *   `f`: 次のフレーム
+        *   `d`: 前のフレーム
+        *   `s`: クリックしたオブジェクトのラベルを保存
+        *   `q`: 進捗を保存して終了
+        *   `w`: 進捗をリセット（`progress.json` を削除）して終了
 
-4.  **Output:**
+4.  **出力：**
 
-    *   Annotated images and YOLO format label files are saved in the `output_dataset` directory, split into `train` and `val` subdirectories.
-    *   Clicked images with bounding boxes are saved in the `output_clicked` directory.
-    *   The current progress (last annotated frame and click count) is saved in the `progress.json` file, allowing you to resume annotation later.
+    *   アノテーション付きの画像とYOLO形式のラベルファイルは、`output_dataset` ディレクトリに保存され、`train` および `val` サブディレクトリに分割されます。
+    *   バウンディングボックス付きのクリックされた画像は、`output_clicked` ディレクトリに保存されます。
+    *   現在の進捗状況（最後にアノテーションを付けたフレームとクリック数）は、`progress.json` ファイルに保存され、後でアノテーションを再開できます。
 
-## Directory Structure
+## ディレクトリ構造
 
-The tool will create the following directory structure:
+ツールは次のディレクトリ構造を作成します。
 
 ```
 output_dataset/
@@ -85,26 +85,25 @@ video_name_frames/
 progress.json
 ```
 
-## Configuration
+## 設定
 
-*   `CLASS_NAMES`: The class names are automatically loaded from the YOLOv8 model (`yolov8n.pt` by default). You can change the model in the script.
-*   `BASE_DIR`: The base directory for output datasets (default: `output_dataset`).
-*   `CLICKED_OUTPUT_DIR`: The directory for clicked images (default: `output_clicked`).
-*   `PROGRESS_FILE`: The file for saving progress (default: `progress.json`).
+*   `CLASS_NAMES`: クラス名は、YOLOv8モデル（デフォルトでは `yolov8n.pt` ）から自動的にロードされます。 スクリプトでモデルを変更できます。
+*   `BASE_DIR`: 出力データセットのベースディレクトリ（デフォルト：`output_dataset`）。
+*   `CLICKED_OUTPUT_DIR`: クリックされた画像のディレクトリ（デフォルト：`output_clicked`）。
+*   `PROGRESS_FILE`: 進捗状況を保存するためのファイル（デフォルト：`progress.json`）。
 
-## Tips
+## ヒント
 
-*   Start with a lower frame rate to reduce the number of frames to annotate.
-*   Use the keyboard shortcuts to speed up the annotation process.
-*   Regularly save your progress by pressing `q` to avoid losing data.
+*   アノテーションするフレームの数を減らすために、低いフレームレートから開始してください。
+*   キーボードショートカットを使用して、アノテーションプロセスをスピードアップしてください。
+*   データが失われるのを防ぐために、`q`を押して定期的に進捗状況を保存してください。
 
-## Troubleshooting
+## トラブルシューティング
 
-*   If you encounter errors during frame extraction, make sure you have the necessary codecs installed.
-*   If the GUI does not display correctly, check if you have the correct version of Tkinter installed.
+*   フレーム抽出中にエラーが発生した場合は、必要なコーデックがインストールされていることを確認してください。
+*   GUIが正しく表示されない場合は、正しいバージョンのTkinterがインストールされているかどうかを確認してください。
 
-## Credits
+## クレジット
 
-This tool is based on the YOLOv8 object detection framework by Ultralytics.
-
+このツールは、UltralyticsによるYOLOv8オブジェクト検出フレームワークに基づいています。
 ```
