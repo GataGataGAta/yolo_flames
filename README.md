@@ -29,7 +29,7 @@ pip install opencv-python imageio ultralytics Pillow tqdm
 1.  **スクリプトを実行します：**
 
     ```bash
-    python yolo_frame_click_tool.py path/to/your/video.mp4
+    python yolo_click.py path/to/your/video.mp4
     ```
 
     `path/to/your/video.mp4` を、実際の動画ファイルのパスに置き換えてください。
