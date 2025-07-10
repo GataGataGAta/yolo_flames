@@ -1,5 +1,3 @@
-# yolo_frame_click_tool.py
-
 import os
 import os.path as osp
 import argparse
@@ -7,6 +5,9 @@ import json
 import cv2
 import imageio
 import threading
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk
 from ultralytics import YOLO
 from tqdm import tqdm
 
@@ -22,6 +23,15 @@ FIXED_CLASS_ID = 0
 BASE_DIR = "output_dataset"
 CLICKED_OUTPUT_DIR = "output_clicked"
 PROGRESS_FILE = "progress.json"
+CURRENT_FRAME = None
+CURRENT_ANNOTATED_FRAME = None
+current_index = 0
+frames = []
+total_frames = 0
+window_name = "YOLOv8 Click Tool"
+video_path = None  # 動画パスを保持
+frame_dir = None # フレームディレクトリを保持
+model = None # YOLO モデルを保持
 
 # === フレーム抽出が必要か判定 ===
 def should_extract_frames(frame_dir):
@@ -57,12 +67,21 @@ def extract_frames(video_path, frame_rate, output_dir):
     if interval <= 0:
         interval = 1
 
+    global frames
+    global total_frames
     selected = []
     for i, img in tqdm(enumerate(reader), total=meta_data['nframes']):
         if i % interval == 0:
             frame_path = os.path.join(output_dir, f"{i:08d}.jpg")
             imageio.imsave(frame_path, img)
             selected.append((i, frame_path))
+
+    frames = sorted([
+        (int(os.path.splitext(f)[0]), os.path.join(frame_dir, f))
+        for f in os.listdir(frame_dir) if f.endswith(".jpg")
+    ])
+
+    total_frames = len(frames)
 
     if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
@@ -87,31 +106,145 @@ def load_progress():
             return data.get("last_frame", 0), click_count
     return 0, 1
 
-# === 入力監視 ===
-def monitor_input():
-    global stop_requested, wq_requested
-    while True:
-        user_input = input()
-        if user_input.strip().lower() == "wq":
-            wq_requested = True
-            stop_requested = True
-            break
-        elif user_input.strip().lower() == "w":
-            stop_requested = True
-            break
-
 # === マウスクリックイベント ===
 def mouse_callback(event, x, y, flags, param):
     global clicked_point
     if event == cv2.EVENT_LBUTTONDOWN:
         clicked_point = (x, y)
 
+# === フレーム表示の更新 ===
+def update_frame_display(frame):
+    global CURRENT_FRAME, CURRENT_ANNOTATED_FRAME
+    results = model(frame)
+    annotated = results[0].plot()
+    CURRENT_ANNOTATED_FRAME = annotated
+    CURRENT_FRAME = frame
+
+    boxes = results[0].boxes
+    global latest_boxes, latest_classes
+    if boxes is not None:
+        latest_boxes = boxes.xyxy.cpu().numpy()
+        latest_classes = boxes.cls.cpu().numpy()
+    else:
+        latest_boxes = []
+        latest_classes = []
+
+    img = Image.fromarray(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
+    imgtk = ImageTk.PhotoImage(image=img)
+    image_label.imgtk = imgtk
+    image_label.config(image=imgtk)
+
+# === フレーム送り ===
+def next_frame():
+    global current_index
+    if current_index < total_frames - 1:
+        current_index += 1
+        frame_index, frame_path = frames[current_index]
+        frame = cv2.imread(frame_path)
+        update_frame_display(frame)
+
+# === フレーム戻し ===
+def prev_frame():
+    global current_index
+    if current_index > 0:
+        current_index -= 1
+        frame_index, frame_path = frames[current_index]
+        frame = cv2.imread(frame_path)
+        update_frame_display(frame)
+
+# === 保存処理 ===
+def save_label():
+    global clicked_point, latest_boxes, latest_classes, click_count, FIXED_CLASS_ID
+
+    if clicked_point is not None and CURRENT_FRAME is not None:
+        x_click, y_click = clicked_point
+        h, w, _ = CURRENT_FRAME.shape
+        found = False
+
+        for box, cls_id in zip(latest_boxes, latest_classes):
+            x1, y1, x2, y2 = box
+            if x1 <= x_click <= x2 and y1 <= y_click <= y2:
+                x_center = ((x1 + x2) / 2) / w
+                y_center = ((y1 + y2) / 2) / h
+                box_width = (x2 - x1) / w
+                box_height = (y2 - y1) / h
+
+                split_type = "train" if (click_count - 1) % 10 < 9 else "val"
+                filename_base = f"{click_count:06d}"
+                label_path = os.path.join(BASE_DIR, "labels", split_type, f"{filename_base}.txt")
+                image_path = os.path.join(BASE_DIR, "images", split_type, f"{filename_base}.jpg")
+                clicked_path = os.path.join(CLICKED_OUTPUT_DIR, f"{filename_base}.jpg")
+
+                with open(label_path, "w") as f:
+                    f.write(f"{FIXED_CLASS_ID} {x_center:.6f} {y_center:.6f} {box_width:.6f} {box_height:.6f}\n")
+                cv2.imwrite(image_path, CURRENT_FRAME)
+                cv2.rectangle(CURRENT_FRAME, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
+                cv2.imwrite(clicked_path, CURRENT_FRAME)
+
+                print(f"[INFO] 保存: {filename_base}")
+                click_count += 1
+                found = True
+                next_frame()
+                break
+
+        if not found:
+            print("[WARN] 検出範囲にクリックがありませんでした")
+
+        clicked_point = None
+
+# === GUIイベント ===
+def on_mouse_click(event):
+    global clicked_point
+    clicked_point = (event.x, event.y)
+    save_label()
+
+def on_closing():
+    global stop_requested
+    stop_requested = True
+    root.destroy()
+
+def set_class_id(event):
+    global FIXED_CLASS_ID
+    try:
+        FIXED_CLASS_ID = int(class_id_combo.get())
+    except ValueError:
+        print("[ERROR] 無効なクラスIDです。")
+
+def save_and_quit():
+    save_progress(frames[current_index][0])
+    print("[INFO] 進捗を保存しました。")
+    print("[INFO] 終了します。")
+    on_closing()
+
+def quit_without_saving():
+    global wq_requested
+    wq_requested = True
+    reset_progress()
+    on_closing()
+
+def key_press(event):
+    if event.keysym == 'f':
+        next_frame()
+    elif event.keysym == 'd':
+        prev_frame()
+    elif event.keysym == 's': # Save on 's' key
+        save_label()
+    elif event.keysym == 'q':
+        save_progress(frames[current_index][0])
+        print("[INFO] 進捗を保存しました。")
+        print("[INFO] 終了します。")
+        on_closing()
+    elif event.keysym == 'w': # Check for Control key with 'w'
+        global wq_requested
+        wq_requested = True
+        reset_progress() # リセット処理を呼び出す
+        print("[INFO] progress.json をリセットして終了します。")
+        on_closing()
+
 # === メイン処理 ===
-def main(video_path):
-    global clicked_point, latest_boxes, latest_classes, click_count, CLASS_NAMES, stop_requested, wq_requested
-    stop_requested = False
-    wq_requested = False
-    threading.Thread(target=monitor_input, daemon=True).start()
+def main_gui(video_path_arg):
+    global video_path, frame_dir, current_index, frames, total_frames, window_name, model
+    video_path = video_path_arg
 
     os.makedirs(os.path.join(BASE_DIR, "images", "train"), exist_ok=True)
     os.makedirs(os.path.join(BASE_DIR, "images", "val"), exist_ok=True)
@@ -120,108 +253,68 @@ def main(video_path):
     os.makedirs(CLICKED_OUTPUT_DIR, exist_ok=True)
 
     model = YOLO("yolov8n.pt")
+    global CLASS_NAMES
     CLASS_NAMES = model.names
 
     last_frame_idx, click_count = load_progress()
-    frame_dir = os.path.splitext(os.path.basename(video_path))[0] + "_frames"
-    frames = sorted([
-        (int(os.path.splitext(f)[0]), os.path.join(frame_dir, f))
-        for f in os.listdir(frame_dir) if f.endswith(".jpg")
-    ])
 
-    window_name = "YOLOv8 Click Tool"
-    cv2.namedWindow(window_name)
-    cv2.setMouseCallback(window_name, mouse_callback)
-
-    total_frames = len(frames)
     current_index = 0
     for idx, (frame_idx, _) in enumerate(frames):
         if frame_idx >= last_frame_idx:
             current_index = idx
             break
 
-    while current_index < total_frames:
-        if stop_requested:
-            if wq_requested:
-                reset_progress()
-            else:
-                save_progress(frames[current_index][0])
-                print("[INFO] 進捗を保存しました。")
-            print("[INFO] 終了します。")
-            break
+    # Tkinter GUIの初期化
+    global root, image_label, class_id_combo
+    root = tk.Tk()
+    root.title(window_name)
+    root.protocol("WM_DELETE_WINDOW", on_closing)
 
-        frame_index, frame_path = frames[current_index]
-        frame = cv2.imread(frame_path)
-        results = model(frame)
-        annotated = results[0].plot()
+    # GUI要素の作成
+    frame = tk.Frame(root)
+    frame.pack(padx=10, pady=10)
 
-        boxes = results[0].boxes
-        if boxes is not None:
-            latest_boxes = boxes.xyxy.cpu().numpy()
-            latest_classes = boxes.cls.cpu().numpy()
-        else:
-            latest_boxes = []
-            latest_classes = []
+    # 左側のクラスID選択タブ
+    id_frame = tk.Frame(frame, width=150)
+    id_frame.pack(side=tk.LEFT, padx=5)
+    id_label = tk.Label(id_frame, text="Class ID:")
+    id_label.pack()
+    class_id_options = [str(i) for i in range(len(CLASS_NAMES))]  # クラスIDのリスト
+    class_id_combo = ttk.Combobox(id_frame, values=class_id_options)
+    class_id_combo.pack()
+    class_id_combo.set("0")  # デフォルト値を設定
+    class_id_combo.bind("<<ComboboxSelected>>", set_class_id) # 選択時にset_class_idを呼ぶ
 
-        while True:
-            cv2.imshow(window_name, annotated)
-            key = cv2.waitKey(1) & 0xFF
+    # 画像表示ラベル
+    image_label = tk.Label(frame)
+    image_label.pack(side=tk.LEFT)
+    image_label.bind("<Button-1>", on_mouse_click)  # 左クリックイベント
 
-            if key == ord("q"):
-                save_progress(frame_index)
-                cv2.destroyAllWindows()
-                return
+    # フレーム操作ボタン
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=5)
+    prev_button = tk.Button(button_frame, text="Prev", command=prev_frame)
+    prev_button.pack(side=tk.LEFT, padx=5)
+    next_button = tk.Button(button_frame, text="Next", command=next_frame)
+    next_button.pack(side=tk.LEFT, padx=5)
 
-            elif key == ord("f"):
-                current_index += 1
-                break
+    # 終了ボタン
+    quit_frame = tk.Frame(root)
+    quit_frame.pack(pady=5)
+    save_quit_button = tk.Button(quit_frame, text="Save & Quit", command=save_and_quit)
+    save_quit_button.pack(side=tk.LEFT, padx=5)
+    quit_button = tk.Button(quit_frame, text="Quit", command=quit_without_saving)
+    quit_button.pack(side=tk.LEFT, padx=5)
 
-            elif key == ord("d"):
-                if current_index > 0:
-                    current_index -= 1
-                break
+    # キーイベントのバインド
+    root.bind("<KeyPress>", key_press)
 
-            elif clicked_point is not None:
-                x_click, y_click = clicked_point
-                h, w, _ = frame.shape
-                found = False
+    # 最初のフレームを表示
+    frame_index, frame_path = frames[current_index]
+    frame = cv2.imread(frame_path)
+    update_frame_display(frame)
 
-                for box, cls_id in zip(latest_boxes, latest_classes):
-                    x1, y1, x2, y2 = box
-                    if x1 <= x_click <= x2 and y1 <= y_click <= y2:
-                        x_center = ((x1 + x2) / 2) / w
-                        y_center = ((y1 + y2) / 2) / h
-                        box_width = (x2 - x1) / w
-                        box_height = (y2 - y1) / h
-
-                        split_type = "train" if (click_count - 1) % 10 < 9 else "val"
-                        filename_base = f"{click_count:06d}"
-                        label_path = os.path.join(BASE_DIR, "labels", split_type, f"{filename_base}.txt")
-                        image_path = os.path.join(BASE_DIR, "images", split_type, f"{filename_base}.jpg")
-                        clicked_path = os.path.join(CLICKED_OUTPUT_DIR, f"{filename_base}.jpg")
-
-                        with open(label_path, "w") as f:
-                            f.write(f"{FIXED_CLASS_ID} {x_center:.6f} {y_center:.6f} {box_width:.6f} {box_height:.6f}\n")
-                        cv2.imwrite(image_path, frame)
-                        cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-                        cv2.imwrite(clicked_path, frame)
-
-                        print(f"[INFO] 保存: {filename_base}")
-                        click_count += 1
-                        found = True
-                        break
-
-                if not found:
-                    print("[WARN] 検出範囲にクリックがありませんでした")
-
-                clicked_point = None
-                break
-
-    if wq_requested:
-        reset_progress()
-    else:
-        save_progress(frame_index)
-    cv2.destroyAllWindows()
+    root.mainloop()
 
 
 # === エントリポイント ===
@@ -230,12 +323,18 @@ if __name__ == "__main__":
     parser.add_argument("video_path", help="動画ファイルのパス")
     args = parser.parse_args()
 
-    frame_folder = os.path.splitext(os.path.basename(args.video_path))[0] + "_frames"
+    video_path = args.video_path
+    frame_dir = os.path.splitext(os.path.basename(video_path))[0] + "_frames"
 
-    if should_extract_frames(frame_folder):
+    if should_extract_frames(frame_dir):
         selected_rate = choose_frame_rate()
-        extract_frames(args.video_path, selected_rate, frame_folder)
+        extract_frames(video_path, selected_rate, frame_dir)
     else:
+        frames = sorted([
+            (int(os.path.splitext(f)[0]), os.path.join(frame_dir, f))
+            for f in os.listdir(frame_dir) if f.endswith(".jpg")
+        ])
+        total_frames = len(frames)
         print("[INFO] フレーム画像が既に存在します。切り出し処理をスキップします。")
 
-    main(args.video_path)
+    main_gui(video_path)
