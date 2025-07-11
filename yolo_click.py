@@ -4,7 +4,6 @@ import argparse
 import json
 import cv2
 import imageio
-import threading
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -30,50 +29,35 @@ frames = []
 total_frames = 0
 window_name = "YOLOv8 Click Tool"
 video_path = None  # 動画パスを保持
-frame_dir = None # フレームディレクトリを保持
-model = None # YOLO モデルを保持
+frame_dir = None  # フレームディレクトリを保持
+model = None  # YOLO モデルを保持
 
 # === フレーム抽出が必要か判定 ===
 def should_extract_frames(frame_dir):
     return not (
-        os.path.exists(frame_dir) and 
+        os.path.exists(frame_dir) and
         any(f.endswith(".jpg") for f in os.listdir(frame_dir))
     )
 
-# === FPS選択 ===
-def choose_frame_rate():
-    print("\nフレームレートを選択してください:")
-    print("1. 60fps")
-    print("2. 30fps")
-    while True:
-        choice = input("番号を入力（1 または 2）: ").strip()
-        if choice == "1":
-            return 60
-        elif choice == "2":
-            return 30
-        else:
-            print("無効な入力です。1 または 2 を入力してください。")
-
-# === フレーム抽出 ===
-def extract_frames(video_path, frame_rate, output_dir):
-    os.makedirs(output_dir, exist_ok=True) 
+# === フレーム抽出（動画FPSを自動取得し、指定target_fpsで間引き抽出） ===
+def extract_frames(video_path, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
     reader = imageio.get_reader(video_path)
     meta_data = reader.get_meta_data()
-    fps = meta_data.get('fps', 0)
-    if fps == 0:
+    video_fps = meta_data.get('fps', 0)
+    if video_fps == 0:
         raise ValueError("[ERROR] 動画のFPSが取得できません。")
 
-    interval = int(round(fps / frame_rate))
-    if interval <= 0:
-        interval = 1
+    print(f"[INFO] 動画FPS: {video_fps} - 全フレームを抽出します。")
 
-    global frames
-    global total_frames
+    interval = 1  # 間引かずにすべてのフレームを抽出
+
     for i, img in tqdm(enumerate(reader), total=meta_data['nframes']):
         if i % interval == 0:
             frame_path = os.path.join(output_dir, f"{i:08d}.jpg")
             imageio.imsave(frame_path, img)
 
+    global frames, total_frames
     frames = sorted([
         (int(os.path.splitext(f)[0]), os.path.join(output_dir, f))
         for f in os.listdir(output_dir) if f.endswith(".jpg")
@@ -84,12 +68,19 @@ def extract_frames(video_path, frame_rate, output_dir):
         os.remove(PROGRESS_FILE)
         print("[INFO] フレーム再生成のため progress.json をリセットしました。")
 
+def extract_or_load_frames(video_path, frame_dir):
+    if should_extract_frames(frame_dir):
+        extract_frames(video_path, frame_dir)
+    else:
+        load_frames(frame_dir)
+        print("[INFO] フレーム画像が既に存在します。切り出し処理をスキップします。")
+        
 # === 進捗の保存・読込 ===
 def reset_progress():
     if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
         print("[INFO] progress.json をリセットしました。")
-        
+
 def save_progress(frame_index):
     with open(PROGRESS_FILE, "w") as f:
         json.dump({"last_frame": frame_index, "click_count": click_count}, f)
@@ -126,16 +117,7 @@ def initialize_model():
     model = YOLO("yolov8n.pt")
     CLASS_NAMES = model.names
 
-# === フレーム抽出判定＆処理 ===
-def extract_or_load_frames(video_path, frame_dir):
-    if should_extract_frames(frame_dir):
-        selected_rate = choose_frame_rate()
-        extract_frames(video_path, selected_rate, frame_dir)
-    else:
-        load_frames(frame_dir)
-        print("[INFO] フレーム画像が既に存在します。切り出し処理をスキップします。")
-
-# === メインGUI関数fffff ===
+# === メインGUI関数 ===
 def main_gui(video_path_arg):
     global video_path, frame_dir, current_index, frames, total_frames, window_name, model, click_count
     video_path = video_path_arg
@@ -167,16 +149,16 @@ def main_gui(video_path_arg):
     id_frame.pack(side=tk.LEFT, padx=5)
     id_label = tk.Label(id_frame, text="Class ID:")
     id_label.pack()
-    class_id_options = [str(i) for i in range(len(CLASS_NAMES))]  # クラスIDのリスト
+    class_id_options = [str(i) for i in range(len(CLASS_NAMES))]
     class_id_combo = ttk.Combobox(id_frame, values=class_id_options)
     class_id_combo.pack()
-    class_id_combo.set("0")  # デフォルト値を設定
-    class_id_combo.bind("<<ComboboxSelected>>", set_class_id) # 選択時にset_class_idを呼ぶ
+    class_id_combo.set("0")
+    class_id_combo.bind("<<ComboboxSelected>>", set_class_id)
 
     # 画像表示ラベル
     image_label = tk.Label(frame)
     image_label.pack(side=tk.LEFT)
-    image_label.bind("<Button-1>", on_mouse_click)  # 左クリックイベント
+    image_label.bind("<Button-1>", on_mouse_click)
 
     # フレーム操作ボタン
     button_frame = tk.Frame(root)
@@ -204,21 +186,16 @@ def main_gui(video_path_arg):
 
     root.mainloop()
 
-# === 以下はGUI関連イベント・関数 ===
-def mouse_callback(event, x, y, flags, param):
-    global clicked_point
-    if event == cv2.EVENT_LBUTTONDOWN:
-        clicked_point = (x, y)
-
+# === GUI関連イベント・関数 ===
 def update_frame_display(frame):
-    global CURRENT_FRAME, CURRENT_ANNOTATED_FRAME
+    global CURRENT_FRAME, CURRENT_ANNOTATED_FRAME, latest_boxes, latest_classes
+
     results = model(frame)
     annotated = results[0].plot()
     CURRENT_ANNOTATED_FRAME = annotated
     CURRENT_FRAME = frame
 
     boxes = results[0].boxes
-    global latest_boxes, latest_classes
     if boxes is not None:
         latest_boxes = boxes.xyxy.cpu().numpy()
         latest_classes = boxes.cls.cpu().numpy()
@@ -272,8 +249,10 @@ def save_label():
                 with open(label_path, "w") as f:
                     f.write(f"{FIXED_CLASS_ID} {x_center:.6f} {y_center:.6f} {box_width:.6f} {box_height:.6f}\n")
                 cv2.imwrite(image_path, CURRENT_FRAME)
-                cv2.rectangle(CURRENT_FRAME, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-                cv2.imwrite(clicked_path, CURRENT_FRAME)
+                # 元画像に赤枠を書き込んだものも保存
+                annotated_frame = CURRENT_FRAME.copy()
+                cv2.rectangle(annotated_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
+                cv2.imwrite(clicked_path, annotated_frame)
 
                 print(f"[INFO] 保存: {filename_base}")
                 click_count += 1
@@ -320,17 +299,17 @@ def key_press(event):
         next_frame()
     elif event.keysym == 'd':
         prev_frame()
-    elif event.keysym == 's': # Save on 's' key
+    elif event.keysym == 's':  # Save on 's' key
         save_label()
     elif event.keysym == 'q':
         save_progress(frames[current_index][0])
         print("[INFO] 進捗を保存しました。")
         print("[INFO] 終了します。")
         on_closing()
-    elif event.keysym == 'w': # Check for Control key with 'w'
+    elif event.keysym == 'w':  # Reset progress and quit on 'w' key
         global wq_requested
         wq_requested = True
-        reset_progress() # リセット処理を呼び出す
+        reset_progress()
         print("[INFO] progress.json をリセットして終了します。")
         on_closing()
 
@@ -343,7 +322,7 @@ def main():
     args = parser.parse_args()
 
     video_path = args.video_path
-    frame_dir = os.path.splitext(os.path.basename(video_path))[0] + "_frames"
+    frame_dir = os.path.splitext(osp.basename(video_path))[0] + "_frames"
 
     extract_or_load_frames(video_path, frame_dir)
 
