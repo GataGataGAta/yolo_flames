@@ -1,6 +1,3 @@
-
----
-
 ````markdown
 # YOLOv8 クリックアノテーションツール
 
@@ -21,7 +18,7 @@
 
 ```bash
 pip install opencv-python imageio ultralytics Pillow tqdm
-````
+```
 
 ## インストール
 
@@ -108,10 +105,5 @@ progress.json
 
 このツールは、UltralyticsによるYOLOv8オブジェクト検出フレームワークに基づいています。
 
-```
+````
 
----
-
-この内容で元のフォーマットを保ちつつ、今日の機能追加・修正点を反映しています。  
-必要ならさらに調整しますので教えてください！
-```
