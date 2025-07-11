@@ -27,13 +27,12 @@
 pip install opencv-python imageio ultralytics Pillow tqdm
 ````
 
----
 
 ## インストール
 
 1. スクリプト `yolo_click.py` をダウンロードします。
 
----
+
 
 ## 使い方
 
@@ -70,7 +69,7 @@ pip install opencv-python imageio ultralytics Pillow tqdm
    * `q` : 進捗を保存して終了
    * `w` : 進捗をリセット（`progress.json`を削除）して終了
 
----
+
 
 ## 出力
 
@@ -83,7 +82,7 @@ pip install opencv-python imageio ultralytics Pillow tqdm
 
 * アノテーションの進捗情報は `progress.json` に保存され、途中からの再開が可能です。
 
----
+
 
 ## ディレクトリ構造
 
@@ -100,7 +99,6 @@ video_name_frames/
 progress.json
 ```
 
----
 
 ## 設定項目
 
@@ -116,7 +114,7 @@ progress.json
 * `PROGRESS_FILE`
   進捗保存ファイル（デフォルト：`progress.json`）。
 
----
+
 
 ## ヒント
 
@@ -124,17 +122,16 @@ progress.json
 * 定期的に `q` キーで進捗を保存して作業を安全に中断しましょう。
 * 「クリック後に次のフレームへ進む」チェックをOFFにすると、じっくり1フレームずつアノテーション可能です。
 
----
+
 
 ## トラブルシューティング
 
 * フレーム抽出に失敗する場合は、必要な動画コーデックがインストールされているか確認してください。
 * GUI表示が崩れる場合は、PythonのTkinter環境が正常か確認してください。
 
----
+
 
 ## クレジット
 
 本ツールは、Ultralytics社のYOLOv8オブジェクト検出フレームワークをベースに作成されています。
 
-```
