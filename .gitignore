@@ -1,0 +1,5 @@
+yolo*.pt
+demo_frames/
+output_clicked/
+output_dataset/
+progress.json
