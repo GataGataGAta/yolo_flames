@@ -61,7 +61,7 @@ pip install opencv-python imageio ultralytics Pillow tqdm
 
 *   アノテーション済みの画像とYOLO形式のラベルファイルは、`output_dataset` ディレクトリに保存され、`train` および `val` サブディレクトリに分割されます。
 *   バウンディングボックス付きのクリックされた画像は、`output_clicked` ディレクトリに保存されます。
-*   進捗情報は `progress_files/動画名_progress.json` に保存され、後から作業を再開できます。
+*   進捗情報は `progress.json` に保存され、後から作業を再開できます。
 
 ## ディレクトリ構造
 
@@ -77,8 +77,7 @@ output_dataset/
 │   └── val/
 output_clicked/
 video_name_frames/
-progress_files/
-└── 動画名_progress.json
+progress.json
 ```
 
 ## 設定
